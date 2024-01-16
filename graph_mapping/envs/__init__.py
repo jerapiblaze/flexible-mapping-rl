@@ -1,0 +1,2 @@
+from .static_mapping import StaticMappingEnv
+from .static_mapping2 import StaticMapping2Env
