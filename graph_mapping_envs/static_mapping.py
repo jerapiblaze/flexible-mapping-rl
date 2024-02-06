@@ -124,6 +124,15 @@ class StaticMappingEnv():
             paths = PhysicalNodeConnect(
                 self.physical_graph_current, node_id_prev, node_id, link_req)
             print("PATH", paths)
+
+            #calculate reward
+            rv = nx.get_node_attributes(self.sfcs_list[sfc_id], name="weight")[vnf_id]
+            ai_t = nx.get_node_attributes(self.physical_graph_current, name="weight")[node_id]
+            beta = 10 # random choice
+            #calculate hop
+            num_hops = len(paths) - 1  
+
+            reward = M - (ai_t - rv) - beta * num_hops
         except nx.NetworkXUnfeasible:
             self.terminated = True
             self.truncated = True
