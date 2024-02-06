@@ -106,7 +106,10 @@ class StaticMappingEnv():
             self.__execute_node_mapping(sfc_id, vnf_id, node_id)
             self.__calc_action_space()
             self.action_history.append(action)
-            reward = 1
+            ai_t = nx.get_node_attributes(self.physical_graph_current, name="weight")[node_id]
+            r_v = nx.get_node_attributes(self.sfcs_list[sfc_id], name="weight")[vnf_id]
+            M = 20  # random choice
+            reward = M - (ai_t - r_v)
             info = {
                 "message": "first action"
             }
