@@ -90,8 +90,8 @@ for episode in range(1):
     terminated = False
     truncated = False
     
-    # while (not terminated and not truncated):
-    for _ in range(10):
+    while (not terminated and not truncated):
+    # for _ in range(10):
         print("state: ", state)
         action = agent.choose_action(state)
         print("action = ",action)
