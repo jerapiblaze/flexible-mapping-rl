@@ -28,11 +28,11 @@ class QLearningAgent:
             cr_s = 0        
         if rand < self.epsilon:
             a = np.random.choice(self.action_space_size)
-            print("a = ",a)
+            # print("a = ",a)
             return a
             
         else:
-            print("max = ",np.argmax(self.q_table[cr_s]))
+            # print("max = ",np.argmax(self.q_table[cr_s]))
             return np.argmax(self.q_table[cr_s])
 
     def update_q_table(self, state, action, reward, next_state):
@@ -45,9 +45,9 @@ class QLearningAgent:
         else: 
             n_s = 0        
         best_next_action = np.argmax(self.q_table[n_s])
-        print("curent q: ", self.q_table[cr_s, action])
+        # print("curent q: ", self.q_table[cr_s, action])
         self.q_table[cr_s, action] += self.alpha * (reward + self.gamma * self.q_table[n_s, best_next_action] - self.q_table[cr_s, action])
-        print("new q: ", self.q_table[cr_s, action] )
+        # print("new q: ", self.q_table[cr_s, action] )
 
 random_seed = 42 
 PHY = nx.DiGraph()
@@ -73,6 +73,18 @@ for edge in edges:
 #     print(f"Edge {edge}: {weight}")      
 
 SFC_LIST = graph_generator.flex_sfc_set2.PfoSFCSET(sfc_count=2, node_count_params=[5, 6, 5], node_req_params=[10, 50, 1], link_req_params=[10, 50, 1], flex_rate_params=0, seed=random_seed)
+for idx, sfc in enumerate(SFC_LIST):
+    
+    # In thông tin về các nút
+    print("\nNodes:")
+    for node, data in sfc.nodes(data=True):
+        print(f"Node {node}: {data}")
+    # In thông tin về các cạnh và trọng số
+    print("\nEdges:")
+    for edge in sfc.edges(data=True):
+        print(f"Edge {edge}")
+    
+    print("\n")    
 # Create environment
 
 env = static_mapping.StaticMapping2Env(physical_graph=PHY, sfcs_list=SFC_LIST, key_attrs={"node_req":"weight", "link_req":"weight", "node_cap":"weight", "link_cap":"weight"})
@@ -84,22 +96,43 @@ action_space_size = len(env.action_space.shape)
 # print(action_space_size)
 agent = QLearningAgent(state_space_size, action_space_size)
 
+# with open("./qvalues.csv", "wt") as f:
+#     f.write("episode,qvalue\n")
+
 # Training loop
-for episode in range(1):
+for episode in range(10000):
+    print("eps:", episode)
     state, info = env.reset()
     terminated = False
     truncated = False
     
     while (not terminated and not truncated):
     # for _ in range(10):
-        print("state: ", state)
-        action = agent.choose_action(state)
-        print("action = ",action)
-        print(agent.q_table)
-        next_state, reward, terminated, truncated, info = env.step(action)
-        print(next_state, reward, terminated, truncated, info)
+        if terminated:
+            print("Done")
+        else: 
+        
+            # print("list of order: ", env.vnf_order)
+            # print("order: ",env.vnf_order_index_current)
+            # print("state: ", state)
+            action = agent.choose_action(state)
+            # print("action = ",action)
+            # print(agent.q_table)
+            next_state, reward, terminated, truncated, info = env.step(action)
+            # print(next_state, reward, terminated, truncated, info)
+            # print("DONE?: ", terminated)
+            agent.update_q_table(state, action, reward, next_state)
+            state = next_state
+            if (terminated):
+                if (env.is_full_mapping()):
+                    print("mapping success", env.node_solution, env.link_solution)
+                # else:
+                    # print("mapping partially", env.node_solution, env.link_solution)
+            # qvalue = np.sum(agent.q_table)
+            if episode == 9999:
+                print(agent.q_table)
 
-        agent.update_q_table(state, action, reward, next_state)
-        state = next_state
+    # with open("./qvalues.csv", "at") as f:
+    #     f.write(f"{episode},{qvalue}\n")
 # a = env._StaticMapping2Env__validate_action(3)
 # print(a)

@@ -52,12 +52,15 @@ class StaticMapping2Env(gym.Env):
 
     def __execute_node_mapping(self, sfc_id, vnf_id, node_id):
         vnode_req = self.__get_vnode_req(sfc_id, vnf_id)
+        # print(f"vnode {vnf_id} _req:", vnode_req)
         nodes_cap = self.__get_node_cap(None)
         nodes_cap[node_id] -= vnode_req
+        # print(f"node_cap{node_id}: ",nodes_cap[node_id])
         if any(node < 0 for node in nodes_cap):
             raise nx.NetworkXUnfeasible(f"Requested vnode sfc={sfc_id} vnf={vnf_id} has exceed capacity of node={node_id}")
         nx.set_node_attributes(self.physical_graph_current, nodes_cap, name="weight")
         self.node_solution_current.append((sfc_id, vnf_id, node_id))
+  
 
     def __execute_link_mapping(self, sfc_id, vlink_id, link_id):
         vlink_req = self.__get_vlink_req(sfc_id, vlink_id)
@@ -110,7 +113,7 @@ class StaticMapping2Env(gym.Env):
             return link_caps
         return link_caps[link_id]   
 
-    def __get_vnode_req(self, sfc_id, vnf_id):
+    def __get_vnode_req(self, sfc_id, vnf_id): #lay capa của vnf
         vnf_reqs = nx.get_node_attributes(self.sfcs_list[sfc_id], name="weight")
         if (vnf_id is None):
             return vnf_reqs
@@ -126,16 +129,30 @@ class StaticMapping2Env(gym.Env):
         node_id, sfc_id, vnf_id, node_id_prev, sfc_id_prev, vnf_id_prev = self.__get_action_details(action)
         # Validate node capacity
         node_cap = self.__get_node_cap(node_id)
+        # print(node_cap)
         vnf_req = self.__get_vnode_req(sfc_id, vnf_id)
         if vnf_req > node_cap:
+            # print(f"vnf_req: {vnf_req} - node-cap: {node_cap}")  
+            reward = -100
+            # info = {
+            #     "message": f"Requirement of {sfc_id}_{vnf_id} beyound capacity of {node_id}"
+            # }
             return f"Requirement of {sfc_id}_{vnf_id} beyound capacity of {node_id}"
+            # return (False, reward, self.__is_terminated(), self.__is_truncated(), info)
         # Validate node singuality
         # If first node, no need to check
         if self.__is_first_of_sfc():
             return None
         # Check if node is used or not
         if any(node_sol[0] == sfc_id and node_sol[2] == node_id for node_sol in self.node_solution_current):
+
+            # reward = -100
+            # info = {
+            #     "message": f"Node {node_id} is already used"
+            # }
+            # return (False, reward, self.__is_terminated(), self.__is_truncated(), info)            
             return f"Node {node_id} is already used"
+
         return None
     
     def __is_terminated(self):
@@ -170,10 +187,11 @@ class StaticMapping2Env(gym.Env):
     
     def __confirm_mapping(self):
         self.node_solution_lastgood = copy.deepcopy(self.node_solution_current)
+        
         self.link_solution_lastgood = copy.deepcopy(self.link_solution_current)
         self.vnf_order_index_current += 1
 
-    def __abort_mapping(self):
+    def __abort_mapping(self): # hủy mapping
         self.node_solution_current = copy.deepcopy(self.node_solution_lastgood)
         self.link_solution_current = copy.deepcopy(self.link_solution_lastgood)
 
@@ -182,7 +200,12 @@ class StaticMapping2Env(gym.Env):
         self.link_solution = copy.deepcopy(self.link_solution_lastgood)
         self.__mapped_sfc += 1
 
+    # def __confirm_solution2(self):
+    #     self.node_solution = copy.deepcopy(self.node_solution_lastgood)
+    #     self.link_solution = copy.deepcopy(self.link_solution_lastgood)
+
     def step(self, action):
+        # print("cu rent: ", self.node_solution_current)
         # Skip the sfc action
         if (action == -1):
             self.__skip_sfc()
@@ -213,15 +236,20 @@ class StaticMapping2Env(gym.Env):
             info = {
                 "message": f"action invalid: {action_validation}"
             }
-            return (False, reward, self.__is_terminated(), self.__is_truncated(), info)
+            # self.__confirm_solution2()
+            return (False, reward, True, self.__is_truncated(), info)
 
         node_id, sfc_id, vnf_id, node_id_prev, sfc_id_prev, vnf_id_prev = self.__get_action_details(action)
-
+        # print(f"action detail: node_id: {node_id}, sfc_id: {sfc_id}, vnf_id:  {vnf_id}, node_id_prev: {node_id_prev}, sfc_id_prev: {sfc_id_prev}, vnf_id_prev: {vnf_id_prev}")
+        ai_t = self.__get_node_cap(node_id)
+        rv = self.__get_vnode_req(sfc_id, vnf_id)
+        M = 200  # Replace with your desired constant
+        beta = 5 
         # First, try to map node
         try:
-            self.__execute_node_mapping(sfc_id, vnf_id, node_id)
-        except nx.NetworkXUnfeasible:
-            self.__abort_mapping()
+            self.__execute_node_mapping(sfc_id, vnf_id, node_id) # mapping
+        except nx.NetworkXUnfeasible: # nếu k được
+            self.__abort_mapping()  # hủy mapping - lưu lại cái tốt nhất trc đó
             info = {
                 "message": f"no node for {sfc_id}_{vnf_id} ({node_id})"
             }
@@ -230,16 +258,22 @@ class StaticMapping2Env(gym.Env):
         # If is the first action of a sfc, no need to map link
         if is_first:
             self.__confirm_mapping()
-            reward = 1
+            # reward = 1
+            reward_first_vnf = M - (ai_t - rv)
+            reward += reward_first_vnf
             info = {
                 "message": "first action success"
             }
             return (True, reward, self.__is_terminated(), self.__is_truncated(), info)
+        
         # Normal action, try to map link
         try:
             vlink = (vnf_id_prev, vnf_id)
+            # print(f"vlink {vnf_id_prev} {vnf_id}", vlink)
             vlink_req = self.__get_vlink_req(sfc_id, vlink)
+            # print("vlink_req: ", vlink_req)
             paths = PhysicalNodeConnect(self.physical_graph_current, node_id_prev, node_id, vlink_req)
+            # print(paths)
             paths = GetPathListFromPath(paths)
             for path in paths:
                 self.__execute_link_mapping(sfc_id, vlink, path)
@@ -251,9 +285,16 @@ class StaticMapping2Env(gym.Env):
             reward = -1
             return (False, reward, self.__is_terminated(), self.__is_truncated(), info)
         self.__confirm_mapping()
-        reward = 1
+        # Tính số lượng bước nhảy (hops) giữa nút hiện tại và nút trước đó
+        if node_id_prev is not None:
+            hop_count = len(nx.shortest_path(self.physical_graph_current, source=node_id_prev, target=node_id)) - 1
+        else:
+            hop_count = 0
+
+        reward_normal_action = M - (ai_t - rv) - beta * hop_count
+        reward += reward_normal_action
         info = {
-            "message": "action success"
+            "message": f"action success"
         }
         # If last action success, the sfc is success
         if is_last:
